@@ -16,60 +16,75 @@ import java.net.URL;
 import java.nio.channels.Channels;
 import java.nio.channels.ReadableByteChannel;
 import java.util.List;
+import java.util.Optional;
 
 
 @Slf4j
 @Service
 public class DownloadExcel {
 
+    private String oldHref;
+
     @Value("${path.excel}")
     private String pathExcel;
     @Value("${path.website}")
     private List<String> siteUrls;
 
+    public boolean isNewSchedule() throws IOException {
+        String href = findHref(siteUrls.get(0)).orElseThrow();
+        if (oldHref.equals(href)) {
+            oldHref = href;
+            return true;
+        } else return false;
+    }
 
 
-    private void downloadFile(String fileUrl, String outputFileName) {
-        try {
-            URL url = new URL(fileUrl);
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+    private void downloadFile(String fileUrl, String outputFileName) throws IOException {
 
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+        URL url = new URL(fileUrl);
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
 
-            connection.setInstanceFollowRedirects(true);
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0");
 
-            try (InputStream in = connection.getInputStream();
-                 ReadableByteChannel rbc = Channels.newChannel(in);
-                 FileOutputStream fos = new FileOutputStream(outputFileName)) {
+        connection.setInstanceFollowRedirects(true);
 
-                fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
-            }
+        try (InputStream in = connection.getInputStream();
+             ReadableByteChannel rbc = Channels.newChannel(in);
+             FileOutputStream fos = new FileOutputStream(outputFileName)) {
 
-        } catch (IOException e) {
-            log.error("Error downloading schedules");
+            fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
         }
+
     }
 
     public void downloadSchedules() {
-        String filePattern = ".xlsx";
         try {
             int i = 1;
             for (String siteUrl : siteUrls) {
-                Document doc = Jsoup.connect(siteUrl).get();
-                Elements links = doc.select("a[href]");
-
-                for (Element link : links) {
-                    String href = link.attr("href");
-                    if (href.contains(filePattern)) {
-                        // Скачать файл по найденной ссылке
-                        downloadFile("https://vsu.by" + href, pathExcel + i + ".xlsx");
-                        log.info("Excel file downloaded successful");
-                        i++;
-                    }
-                }
+                String href = findHref(siteUrl).orElseThrow();
+                System.out.println(pathExcel + href.split("/")[4] + ".xlsx");
+                downloadFile("https://vsu.by" + href, pathExcel + href.split("/")[4] + ".xlsx");
+                log.info("Excel file downloaded successful");
             }
         } catch (IOException e) {
-            log.error("Excel file no downloaded");
+            log.error("Excel file no downloaded " + e.getMessage());
         }
+    }
+
+    public Optional<String> findHref(String siteUrl) throws IOException {
+        String filePattern = ".xlsx";
+        Document doc = Jsoup.connect(siteUrl).get();
+        Elements links = doc.select("a[href]");
+
+        for (Element link : links) {
+            String href = link.attr("href");
+            if (href.contains(filePattern)) {
+
+                return Optional.of(href);
+            }
+        }
+
+
+        return Optional.of(null);
     }
 }

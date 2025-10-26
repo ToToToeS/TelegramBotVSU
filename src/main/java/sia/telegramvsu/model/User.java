@@ -25,4 +25,6 @@ public class User {
 
     private String status;
 
+    @Column(columnDefinition = "BOOLEAN DEFAULT false", name = "newsletter")
+    private boolean newsletter;
 }

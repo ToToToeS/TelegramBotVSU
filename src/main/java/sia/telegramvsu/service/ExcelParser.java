@@ -41,7 +41,7 @@ public class ExcelParser {
             File folder = new File(filePath);
             File[] files = folder.listFiles();
             for (var file : files) {
-
+                System.out.println(file.getName());
                 if (file.getName().contains(".xlsx")) {
 
                     WeekDay dayNow = null;

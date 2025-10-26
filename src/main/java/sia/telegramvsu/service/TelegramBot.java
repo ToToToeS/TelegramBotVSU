@@ -1,6 +1,7 @@
 package sia.telegramvsu.service;
 
 import jakarta.ws.rs.NotFoundException;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +25,7 @@ import sia.telegramvsu.model.UserRepository;
 import sia.telegramvsu.model.WeekDay;
 
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -48,6 +50,23 @@ public class TelegramBot extends TelegramLongPollingBot {
     public void downloadExcel() throws IOException {
        downloadExcel.downloadSchedules();
        excelParser.parseExel();
+    }
+
+    @Scheduled(cron = "0 0 */1 * * *")
+    public void sendNewSchedule() throws IOException {
+        if (downloadExcel.isNewSchedule()) {
+            downloadExcel.downloadSchedules();
+            excelParser.parseExel();
+            sendNewScheduleForCustomer();
+        }
+    }
+
+    private void sendNewScheduleForCustomer() {
+        List<User> NewsLettersUsers = userRepository.findByNewsletter(true);
+
+        for (User user : NewsLettersUsers) {
+            sendMessage(user.getId(), "Расписание обновлено:" + LocalDate.now());
+        }
     }
 
     @Autowired
@@ -86,6 +105,7 @@ public class TelegramBot extends TelegramLongPollingBot {
                 switch (msg.getText()) {
                     case "/reset":
                             user.setGroup(null);
+                            user.setNewsletter(false);
                             user.setStatus(NOBODY);
                             userRepository.save(user);
                             sendChosenStatus(chatId);
@@ -98,6 +118,11 @@ public class TelegramBot extends TelegramLongPollingBot {
                         return;
                     case "/free":
                          sendChosenDayWeekForSearchLesson(chatId);
+                    case "/notification":
+                        user.setNewsletter(!user.isNewsletter());
+                        userRepository.save(user);
+                        sendMessage(user.getId(), "Оповещение новых расписаний: " + user.isNewsletter());
+                        return;
                 }
 
             }
@@ -136,158 +161,89 @@ public class TelegramBot extends TelegramLongPollingBot {
             User user = userRepository.findById(chatId).orElseThrow(() -> new NotFoundException("user not found with id " + chatId));
             String group = user.getGroup();
 
-            if (callBackQuery.equals("MONDAY_BUTTON")) {
+            switch (callBackQuery) {
+                case "MONDAY_BUTTON", "TUESDAY_BUTTON", "WEDNESDAY_BUTTON", "THURSDAY_BUTTON", "FRIDAY_BUTTON", "SATURDAY_BUTTON" -> {
+                    WeekDay day = switch (callBackQuery) {
+                        case "MONDAY_BUTTON" -> WeekDay.MONDAY;
+                        case "TUESDAY_BUTTON" -> WeekDay.TUESDAY;
+                        case "WEDNESDAY_BUTTON" -> WeekDay.WEDNESDAY;
+                        case "THURSDAY_BUTTON" -> WeekDay.THURSDAY;
+                        case "FRIDAY_BUTTON" -> WeekDay.FRIDAY;
+                        case "SATURDAY_BUTTON" -> WeekDay.SATURDAY;
+                        default -> null;
+                    };
+                    if (day != null) {
+                        String message = user.getStatus().equals(TEACHER) ?
+                                excelParser.getDaySubjectsTeacher(day, group) :
+                                excelParser.getDaySubjectsStudent(day, group);
+                        sendSchedules(chatId, message);
+                        deleteMessages(chatId, messageId);
+                    }
+                }
 
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.MONDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.MONDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
+                case "MONDAY_BUTTON_LESSON", "TUESDAY_BUTTON_LESSON", "WEDNESDAY_BUTTON_LESSON",
+                     "THURSDAY_BUTTON_LESSON", "FRIDAY_BUTTON_LESSON" -> {
+                    dayLesson = switch (callBackQuery) {
+                        case "MONDAY_BUTTON_LESSON" -> WeekDay.MONDAY;
+                        case "TUESDAY_BUTTON_LESSON" -> WeekDay.TUESDAY;
+                        case "WEDNESDAY_BUTTON_LESSON" -> WeekDay.WEDNESDAY;
+                        case "THURSDAY_BUTTON_LESSON" -> WeekDay.THURSDAY;
+                        case "FRIDAY_BUTTON_LESSON" -> WeekDay.FRIDAY;
+                        default -> dayLesson;
+                    };
+                    sendChosenLessonNumber(chatId);
+                    deleteMessages(chatId, messageId);
+                }
 
-            } else if (callBackQuery.equals("TUESDAY_BUTTON")) {
+                case "LESSON_1", "LESSON_2", "LESSON_3", "LESSON_4", "LESSON_5", "LESSON_6", "LESSON_7", "LESSON_8" -> {
+                    NumberLesson lesson = switch (callBackQuery) {
+                        case "LESSON_1" -> NumberLesson.LESSON_1;
+                        case "LESSON_2" -> NumberLesson.LESSON_2;
+                        case "LESSON_3" -> NumberLesson.LESSON_3;
+                        case "LESSON_4" -> NumberLesson.LESSON_4;
+                        case "LESSON_5" -> NumberLesson.LESSON_5;
+                        case "LESSON_6" -> NumberLesson.LESSON_6;
+                        case "LESSON_7" -> NumberLesson.LESSON_7;
+                        case "LESSON_8" -> NumberLesson.LESSON_8;
+                        default -> null;
+                    };
+                    if (lesson != null) {
+                        sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, lesson).toString());
+                        deleteMessages(chatId, messageId);
+                    }
+                }
 
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.TUESDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.TUESDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
+                case "ALL_BUTTON" -> {
+                    String message = user.getStatus().equals(TEACHER) ?
+                            excelParser.getWeekSubjectsTeacher(group) :
+                            excelParser.getWeekSubjectsStudent(group);
+                    sendSchedules(chatId, message);
+                    deleteMessages(chatId, messageId);
+                }
 
-            } else if (callBackQuery.equals("WEDNESDAY_BUTTON")) {
+                case "CHANGE_DAY" -> {
+                    sendChosenDayWeek(chatId, user.getGroup());
+                }
 
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.WEDNESDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.WEDNESDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
+                case "TEACHER_BUTTON" -> {
+                    sendMessage(chatId, "Введите ФИО так как указанно в расписании \nНапример: Дрозд Е. М.");
+                    user.setStatus(TEACHER);
+                    user.setGroup(null);
+                    userRepository.save(user);
+                    deleteMessages(chatId, messageId);
+                }
 
-            }else if (callBackQuery.equals("THURSDAY_BUTTON")) {
+                case "STUDENT_BUTTON" -> {
+                    sendMessage(chatId, "Введите название группы вместе с подгруппой так как указанно в расписании \nНапример: 24ИСиТ1д_1");
+                    user.setStatus(STUDENT);
+                    user.setGroup(null);
+                    userRepository.save(user);
+                    deleteMessages(chatId, messageId);
+                }
 
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.THURSDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.THURSDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("FRIDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.FRIDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.FRIDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("SATURDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.SATURDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.SATURDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("MONDAY_BUTTON_LESSON")) {
-                dayLesson = WeekDay.MONDAY;
-                sendChosenLessonNumber(chatId);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("TUESDAY_BUTTON_LESSON")) {
-                dayLesson = WeekDay.TUESDAY;
-                sendChosenLessonNumber(chatId);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("WEDNESDAY_BUTTON_LESSON")) {
-                dayLesson = WeekDay.WEDNESDAY;
-                sendChosenLessonNumber(chatId);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("THURSDAY_BUTTON_LESSON")) {
-                dayLesson = WeekDay.THURSDAY;
-                sendChosenLessonNumber(chatId);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("FRIDAY_BUTTON_LESSON")) {
-                dayLesson = WeekDay.FRIDAY;
-                sendChosenLessonNumber(chatId);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_1")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_1).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_2")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_2).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_3")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_3).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_4")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_4).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_5")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_5).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_6")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_6).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_7")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_7).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("LESSON_8")) {
-                sendMessage(chatId, excelParser.getFreeAuditoriums(dayLesson, NumberLesson.LESSON_8).toString());
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("ALL_BUTTON")) {
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getWeekSubjectsTeacher(group) : excelParser.getWeekSubjectsStudent(group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("CHANGE_DAY")) {
-                sendChosenDayWeek(chatId, user.getGroup());
-            } else if (callBackQuery.equals("TEACHER_BUTTON")) {
-                sendMessage(chatId, "Введите ФИО так как указанно в расписании \nНапример: Дрозд Е. М.");
-                user.setStatus(TEACHER);
-                user.setGroup(null);
-                userRepository.save(user);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("STUDENT_BUTTON")) {
-                sendMessage(chatId, "Введите название группы вместе с подгруппой так как указанно в расписании \nНапример: 24ИСиТ1д_1");
-                user.setStatus(STUDENT);
-                user.setGroup(null);
-                userRepository.save(user);
-                deleteMessages(chatId, messageId);
-            } if (callBackQuery.equals("MONDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.MONDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.MONDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("TUESDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.TUESDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.TUESDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("WEDNESDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.WEDNESDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.WEDNESDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            }else if (callBackQuery.equals("THURSDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.THURSDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.THURSDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("FRIDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.FRIDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.FRIDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("SATURDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.SATURDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.SATURDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("ALL_BUTTON")) {
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getWeekSubjectsTeacher(group) : excelParser.getWeekSubjectsStudent(group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("CHANGE_DAY")) {
-                sendChosenDayWeek(chatId, user.getGroup());
-            } else if (callBackQuery.equals("TEACHER_BUTTON")) {
-                sendMessage(chatId, "Введите ФИО так как указанно в расписании \nНапример: Дрозд Е. М.");
-                user.setStatus(TEACHER);
-                user.setGroup(null);
-                userRepository.save(user);
-                deleteMessages(chatId, messageId);
-            } else if (callBackQuery.equals("STUDENT_BUTTON")) {
-                sendMessage(chatId, "Введите название группы вместе с подгруппой так как указанно в расписании \nНапример: 24ИСиТ1д_1");
-                user.setStatus(STUDENT);
-                user.setGroup(null);
-                userRepository.save(user);
-                deleteMessages(chatId, messageId);
+                default -> {
+                    // Обработка неизвестной команды (опционально)
+                }
             }
         }
     }
