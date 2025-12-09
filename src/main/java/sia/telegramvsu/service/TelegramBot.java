@@ -234,42 +234,6 @@ public class TelegramBot extends TelegramLongPollingBot {
                 user.setGroup(null);
                 userRepository.save(user);
                 deleteMessages(chatId, messageId);
-            } if (callBackQuery.equals("MONDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.MONDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.MONDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("TUESDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.TUESDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.TUESDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("WEDNESDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.WEDNESDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.WEDNESDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            }else if (callBackQuery.equals("THURSDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.THURSDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.THURSDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("FRIDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.FRIDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.FRIDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
-            } else if (callBackQuery.equals("SATURDAY_BUTTON")) {
-
-                String message = user.getStatus().equals(TEACHER) ? excelParser.getDaySubjectsTeacher(WeekDay.SATURDAY, group) : excelParser.getDaySubjectsStudent(WeekDay.SATURDAY, group);
-                sendSchedules(chatId, message);
-                deleteMessages(chatId, messageId);
-
             } else if (callBackQuery.equals("ALL_BUTTON")) {
                 String message = user.getStatus().equals(TEACHER) ? excelParser.getWeekSubjectsTeacher(group) : excelParser.getWeekSubjectsStudent(group);
                 sendSchedules(chatId, message);
